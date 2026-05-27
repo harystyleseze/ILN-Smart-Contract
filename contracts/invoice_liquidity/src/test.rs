@@ -134,6 +134,43 @@ fn test_submit_invoice_stores_correct_fields() {
 }
 
 #[test]
+fn test_get_invoice_returns_existing_invoice() {
+    let t = setup();
+    let due_date = t.env.ledger().timestamp() + DUE_DATE_OFFSET;
+    let id = t.contract.submit_invoice(
+        &t.freelancer,
+        &t.payer,
+        &INVOICE_AMOUNT,
+        &due_date,
+        &DISCOUNT_RATE,
+        &t.token.address,
+    );
+
+    let invoice = t.contract.get_invoice(&id);
+
+    assert_eq!(invoice.id, id);
+    assert_eq!(invoice.freelancer, t.freelancer);
+    assert_eq!(invoice.payer, t.payer);
+    assert_eq!(invoice.token, t.token.address);
+    assert_eq!(invoice.amount, INVOICE_AMOUNT);
+    assert_eq!(invoice.due_date, due_date);
+    assert_eq!(invoice.discount_rate, DISCOUNT_RATE);
+    assert_eq!(invoice.status, InvoiceStatus::Pending);
+    assert_eq!(invoice.amount_funded, 0);
+    assert!(invoice.funder.is_none());
+    assert!(invoice.funded_at.is_none());
+}
+
+#[test]
+fn test_get_invoice_returns_invoice_not_found_for_missing_id() {
+    let t = setup();
+
+    let result = t.contract.try_get_invoice(&999);
+
+    assert_eq!(result, Err(Ok(ContractError::InvoiceNotFound)));
+}
+
+#[test]
 fn test_submit_multiple_invoices_increment_ids() {
     let t = setup();
 

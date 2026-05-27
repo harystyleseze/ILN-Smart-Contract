@@ -202,6 +202,10 @@ impl InvoiceLiquidityContract {
 
         freelancer.require_auth();
 
+        if freelancer == payer {
+            return Err(ContractError::SelfInvoice);
+        }
+
         validate_invoice_terms(&env, amount, due_date, discount_rate)?;
 
         // token validation
@@ -1153,6 +1157,15 @@ impl InvoiceLiquidityContract {
         rate.max(50)
     }
 
+    /// Returns the invoice with the given `invoice_id`.
+    ///
+    /// This is a read-only view method that returns the full `Invoice`
+    /// struct, including submitter, payer, LP, token, amount, discount rate,
+    /// due date, status, and funding state.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ContractError::InvoiceNotFound` if the invoice does not exist.
     // ----------------------------------------------------------------
     // get_invoice
     // ----------------------------------------------------------------

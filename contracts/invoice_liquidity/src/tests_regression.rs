@@ -204,6 +204,27 @@ fn regression_due_date_must_be_future() {
     assert!(result_valid.is_ok());
 }
 
+/// Regression for: submitting an invoice with the freelancer as payer is rejected
+/// Self-invoicing has no economic purpose and should be disallowed.
+#[test]
+fn regression_self_invoice_rejected() {
+    let t = setup_regression();
+
+    let due_date = t.env.ledger().timestamp() + 86400;
+
+    let result = t.contract.try_submit_invoice(
+        &t.freelancer,
+        &t.freelancer,
+        &ONE_USDC,
+        &due_date,
+        &ONE_BPS,
+        &t.token.address,
+    );
+
+    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(ContractError::SelfInvoice)));
+}
+
 /// Regression for: Two invoices submitted in same ledger timestamp get different IDs
 /// Previously, there was a race condition where submitting two invoices in the
 /// same ledger could result in the same ID being assigned to both.
