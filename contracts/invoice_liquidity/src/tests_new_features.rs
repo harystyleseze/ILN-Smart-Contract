@@ -146,7 +146,7 @@ fn test_contract_stats_increments_on_mark_paid() {
     );
 
     t.contract.fund_invoice(&t.funder, &invoice_id, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&invoice_id);
+    t.contract.mark_paid(&invoice_id, &INVOICE_AMOUNT);
 
     let stats = t.contract.get_contract_stats();
     assert_eq!(stats.total_invoices, 1);
@@ -242,7 +242,7 @@ fn test_pause_blocks_mark_paid() {
     t.contract.fund_invoice(&t.funder, &invoice_id, &INVOICE_AMOUNT);
     t.contract.pause();
 
-    let result = t.contract.try_mark_paid(&invoice_id);
+    let result = t.contract.try_mark_paid(&invoice_id, &INVOICE_AMOUNT);
 
     assert!(result.is_err());
     assert_eq!(result, Err(Ok(ContractError::ContractPaused)));

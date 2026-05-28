@@ -150,7 +150,7 @@ fn test_fund_and_mark_paid_flow() {
     client.fund_invoice(&funder, &id, &1000).unwrap();
 
     // mark as paid
-    client.mark_paid(&id).unwrap();
+    client.mark_paid(&id, &INVOICE_AMOUNT).unwrap();
 
     let invoice = client.get_invoice(&id).unwrap();
 

@@ -125,7 +125,7 @@ fn assert_full_lifecycle_for_token(
         "{token_name} should pay the freelancer in the same token path",
     );
 
-    env.contract.mark_paid(&invoice_id);
+    env.contract.mark_paid(&invoice_id, &INVOICE_AMOUNT);
 
     assert_eq!(
         token.client.balance(&env.lp) - lp_before,
@@ -188,7 +188,7 @@ fn test_admin_removing_token_mid_flight_does_not_break_existing_invoice_settleme
     env.contract.remove_token(&env.eurc.address);
 
     env.contract.fund_invoice(&env.lp, &invoice_id, &amount);
-    env.contract.mark_paid(&invoice_id);
+    env.contract.mark_paid(&invoice_id, &INVOICE_AMOUNT);
 
     let invoice = env.contract.get_invoice(&invoice_id);
     assert_eq!(invoice.status, InvoiceStatus::Paid);
@@ -212,7 +212,7 @@ fn test_same_lp_can_settle_invoices_independently_across_different_tokens() {
     env.contract
         .fund_invoice(&env.lp, &eurc_invoice, &eurc_amount);
 
-    env.contract.mark_paid(&usdc_invoice);
+    env.contract.mark_paid(&usdc_invoice, &INVOICE_AMOUNT);
 
     assert_eq!(
         env.contract.get_invoice(&usdc_invoice).status,
@@ -231,7 +231,7 @@ fn test_same_lp_can_settle_invoices_independently_across_different_tokens() {
         eurc_lp_before - eurc_amount
     );
 
-    env.contract.mark_paid(&eurc_invoice);
+    env.contract.mark_paid(&eurc_invoice, &INVOICE_AMOUNT);
 
     assert_eq!(
         env.contract.get_invoice(&eurc_invoice).status,
@@ -271,8 +271,8 @@ fn test_amounts_preserve_precision_for_6_and_7_decimal_token_paths() {
         xlm_amount - expected_discount(xlm_amount),
     );
 
-    env.contract.mark_paid(&eurc_invoice);
-    env.contract.mark_paid(&xlm_invoice);
+    env.contract.mark_paid(&eurc_invoice, &INVOICE_AMOUNT);
+    env.contract.mark_paid(&xlm_invoice, &INVOICE_AMOUNT);
 
     assert_eq!(
         env.eurc.client.balance(&env.lp) - eurc_lp_before,

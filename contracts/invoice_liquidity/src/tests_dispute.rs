@@ -169,7 +169,7 @@ fn test_cannot_mark_paid_disputed_invoice() {
 
     t.contract.dispute_invoice(&id, &reason_hash(&t.env));
 
-    let result = t.contract.try_mark_paid(&id);
+    let result = t.contract.try_mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(result, Err(Ok(ContractError::InvoiceDisputed)));
 }
 
@@ -267,7 +267,7 @@ fn test_auto_resolve_dispute_timeout_behavior() {
         dispute_timeout_ledgers: 100,
     };
     t.env.as_contract(&t.contract.address, || {
-        crate::config::set_config(&t.env, &config).unwrap();
+        crate::storage::set_config(&t.env, &config);
     });
 
     let due_date = t.env.ledger().timestamp() + DUE_DATE_OFFSET;

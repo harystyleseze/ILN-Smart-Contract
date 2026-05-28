@@ -179,7 +179,7 @@ fn invariants_hold_after_mark_paid() {
     let t = setup();
     let id = submit_standard_invoice(&t);
     t.contract.fund_invoice(&t.funder, &id, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
     check_invariants(&t.env, &t.contract);
 }
 
@@ -200,7 +200,7 @@ fn invariants_hold_across_multiple_invoices() {
     let id3 = submit_standard_invoice(&t);
 
     t.contract.fund_invoice(&t.funder, &id1, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&id1);
+    t.contract.mark_paid(&id1, &INVOICE_AMOUNT);
     check_invariants(&t.env, &t.contract);
 
     t.contract.cancel_invoice(&id2);

@@ -166,7 +166,7 @@ fn mt03_payer_score_increases_by_exactly_one_on_settlement() {
     assert_eq!(score_before, 50, "default score should be 50");
 
     t.contract.fund_invoice(&t.funder, &id, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
 
     let score_after = t.contract.payer_score(&t.payer);
     assert_eq!(

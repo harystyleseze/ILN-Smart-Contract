@@ -154,7 +154,7 @@ fn test_cannot_fund_already_paid_invoice() {
 
     // Fund and mark as paid
     t.contract.fund_invoice(&t.funder, &id, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(
         t.contract.get_invoice(&id).status,
         InvoiceStatus::Paid,
@@ -223,7 +223,7 @@ fn test_cannot_mark_paid_on_pending_invoice() {
     );
 
     // Mark paid should fail with NotFunded
-    let result = t.contract.try_mark_paid(&id);
+    let result = t.contract.try_mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(result, Err(Ok(ContractError::NotFunded)));
 
     // Verify status unchanged
@@ -245,7 +245,7 @@ fn test_cannot_mark_paid_twice() {
 
     // Fund and mark as paid once
     t.contract.fund_invoice(&t.funder, &id, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(
         t.contract.get_invoice(&id).status,
         InvoiceStatus::Paid,
@@ -253,7 +253,7 @@ fn test_cannot_mark_paid_twice() {
     );
 
     // Second mark_paid should fail with AlreadyPaid
-    let result = t.contract.try_mark_paid(&id);
+    let result = t.contract.try_mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(result, Err(Ok(ContractError::AlreadyPaid)));
 
     // Verify status unchanged
@@ -286,7 +286,7 @@ fn test_cannot_mark_paid_on_defaulted_invoice() {
     );
 
     // Mark paid should fail with InvoiceDefaulted
-    let result = t.contract.try_mark_paid(&id);
+    let result = t.contract.try_mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(result, Err(Ok(ContractError::InvoiceDefaulted)));
 
     // Verify status unchanged
@@ -369,7 +369,7 @@ fn test_cannot_claim_default_on_paid_invoice() {
 
     // Fund and mark as paid
     t.contract.fund_invoice(&t.funder, &id, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(
         t.contract.get_invoice(&id).status,
         InvoiceStatus::Paid,
@@ -539,7 +539,7 @@ fn test_funded_to_paid() {
     assert_eq!(invoice_before.status, InvoiceStatus::Funded);
 
     // Mark as paid
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
 
     // Verify state transition
     let invoice_after = t.contract.get_invoice(&id);
@@ -598,7 +598,7 @@ fn test_all_reachable_states_from_pending() {
     let t1 = setup();
     let id1 = submit_invoice(&t1);
     t1.contract.fund_invoice(&t1.funder, &id1, &INVOICE_AMOUNT);
-    t1.contract.mark_paid(&id1);
+    t1.contract.mark_paid(&id1, &INVOICE_AMOUNT);
     assert_eq!(
         t1.contract.get_invoice(&id1).status,
         InvoiceStatus::Paid,
@@ -691,7 +691,7 @@ fn test_state_transition_matrix_validation() {
     let id_funded = submit_invoice(&t);
     t.contract
         .fund_invoice(&t.funder, &id_funded, &INVOICE_AMOUNT);
-    let result = t.contract.try_mark_paid(&id_funded);
+    let result = t.contract.try_mark_paid(&id_funded, &INVOICE_AMOUNT);
     assert!(result.is_ok(), "Mark paid should work on Funded invoice");
 
     // Test Funded → claim_default works (after due date)
@@ -728,7 +728,7 @@ fn test_cannot_mark_paid_on_partially_funded_invoice() {
     );
 
     // Mark paid should fail with NotFunded
-    let result = t.contract.try_mark_paid(&id);
+    let result = t.contract.try_mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(result, Err(Ok(ContractError::NotFunded)));
 }
 

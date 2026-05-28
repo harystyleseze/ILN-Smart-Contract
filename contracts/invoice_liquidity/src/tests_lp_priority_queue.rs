@@ -280,7 +280,7 @@ fn test_full_queue_lifecycle_with_payout() {
     assert_eq!(winner, t.lp_a);
 
     t.contract.fund_invoice(&t.lp_a, &id, &INVOICE_AMOUNT);
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
 
     let invoice = t.contract.get_invoice(&id);
     assert_eq!(invoice.status, InvoiceStatus::Paid);

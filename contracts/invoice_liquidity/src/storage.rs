@@ -127,7 +127,7 @@ pub fn get_payer_score(env: &Env, payer: &Address) -> u32 {
         Some(mut rep) => {
             if let Some(decay_config) = get_config(env) {
                 let current_ledger = env.ledger().sequence() as u64;
-                let ledgers_since_activity = current_ledger.saturating_sub(rep.last_activity_ledger);
+                let ledgers_since_activity = current_ledger.saturating_sub(rep.last_activity_ledger.into());
                 
                 if ledgers_since_activity >= decay_config.decay_period_ledgers 
                     && decay_config.decay_period_ledgers > 0 
@@ -153,7 +153,7 @@ pub fn set_payer_score(env: &Env, payer: &Address, score: u32) {
     // Note: To preserve `last_activity_ledger`, we should actually retrieve the old Rep or create a new one.
     // In `invoice.rs` the old function was `set_payer_score(env: &Env, payer: &Address, score: u32) { env.storage().persistent().set(..., &rep) }` which didn't compile correctly in the snippet I saw (`&rep` not defined). Let's fix that.
     let current_ledger = env.ledger().sequence() as u64;
-    let rep = ReputationScore { score, last_activity_ledger: current_ledger };
+    let rep = ReputationScore { score, last_activity_ledger: current_ledger as u32 };
     env.storage().persistent().set(&DataKey::PayerScore(payer.clone()), &rep);
 }
 

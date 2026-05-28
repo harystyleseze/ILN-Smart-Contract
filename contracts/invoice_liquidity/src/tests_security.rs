@@ -336,7 +336,7 @@ fn test_storage_isolation_adjacent_invoice_ids() {
 
     // Fully cycle invoice 1: fund -> mark paid
     t.contract.fund_invoice(&new_funder, &id_1, &1_000_000_000);
-    t.contract.mark_paid(&id_1);
+    t.contract.mark_paid(&id_1, &1_000_000_000);
 
     let inv1 = t.contract.get_invoice(&id_1);
     let inv2 = t.contract.get_invoice(&id_2);

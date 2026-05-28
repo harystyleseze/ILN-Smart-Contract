@@ -9,7 +9,7 @@ use soroban_sdk::{
 };
 
 #[contracttype]
-enum Distcrate::storage::DataKey {
+enum DistDataKey {
     Lp(Address),
     Freelancer(Address),
     PayerOnTime(Address),
@@ -21,7 +21,7 @@ struct MockDistribution;
 #[contractimpl]
 impl MockDistribution {
     pub fn accrue_lp(env: Env, lp: Address, amount_usdc_equivalent: i128) {
-        let key = Distcrate::storage::DataKey::Lp(lp);
+        let key = DistDataKey::Lp(lp);
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage()
             .persistent()
@@ -29,14 +29,14 @@ impl MockDistribution {
     }
 
     pub fn accrue_settlement(env: Env, freelancer: Address, payer: Address, on_time: bool) {
-        let freelancer_key = Distcrate::storage::DataKey::Freelancer(freelancer);
+        let freelancer_key = DistDataKey::Freelancer(freelancer);
         let freelancer_count: u64 = env.storage().persistent().get(&freelancer_key).unwrap_or(0);
         env.storage()
             .persistent()
             .set(&freelancer_key, &(freelancer_count + 1));
 
         if on_time {
-            let payer_key = Distcrate::storage::DataKey::PayerOnTime(payer);
+            let payer_key = DistDataKey::PayerOnTime(payer);
             let payer_count: u64 = env.storage().persistent().get(&payer_key).unwrap_or(0);
             env.storage()
                 .persistent()
@@ -47,21 +47,21 @@ impl MockDistribution {
     pub fn lp_volume(env: Env, lp: Address) -> i128 {
         env.storage()
             .persistent()
-            .get(&Distcrate::storage::DataKey::Lp(lp))
+            .get(&DistDataKey::Lp(lp))
             .unwrap_or(0)
     }
 
     pub fn freelancer_settled(env: Env, freelancer: Address) -> u64 {
         env.storage()
             .persistent()
-            .get(&Distcrate::storage::DataKey::Freelancer(freelancer))
+            .get(&DistDataKey::Freelancer(freelancer))
             .unwrap_or(0)
     }
 
     pub fn payer_on_time(env: Env, payer: Address) -> u64 {
         env.storage()
             .persistent()
-            .get(&Distcrate::storage::DataKey::PayerOnTime(payer))
+            .get(&DistDataKey::PayerOnTime(payer))
             .unwrap_or(0)
     }
 }
@@ -113,7 +113,7 @@ fn distribution_hooks_track_lp_freelancer_and_payer() {
     invoice.fund_invoice(&funder, &submitted, &invoice_amount);
     assert_eq!(dist.lp_volume(&funder), invoice_amount);
 
-    invoice.mark_paid(&submitted);
+    invoice.mark_paid(&submitted, &invoice_amount);
 
     assert_eq!(dist.freelancer_settled(&freelancer), 1);
     assert_eq!(dist.payer_on_time(&payer), 1);

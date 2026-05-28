@@ -254,7 +254,7 @@ fn test_scenario_5_fund_mark_paid_fund_again() {
     t.contract.fund_invoice(&t.lp1, &id, &amount);
 
     // Invoice is settled by payer
-    t.contract.mark_paid(&id);
+    t.contract.mark_paid(&id, &INVOICE_AMOUNT);
 
     // Second LP (or same) attempts to fund the settled invoice => AlreadyPaid
     let result = t.contract.try_fund_invoice(&t.lp2, &id, &amount);

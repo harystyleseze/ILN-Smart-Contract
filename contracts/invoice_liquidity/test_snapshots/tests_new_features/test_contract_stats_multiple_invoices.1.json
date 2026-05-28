@@ -519,6 +519,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "amount_paid"
+                    },
+                    "val": {
+                      "i128": "0"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "discount_rate"
                     },
                     "val": {
@@ -628,6 +636,14 @@
                   {
                     "key": {
                       "symbol": "amount_funded"
+                    },
+                    "val": {
+                      "i128": "0"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "amount_paid"
                     },
                     "val": {
                       "i128": "0"
@@ -751,6 +767,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "amount_paid"
+                    },
+                    "val": {
+                      "i128": "0"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "discount_rate"
                     },
                     "val": {
@@ -846,6 +870,43 @@
               "durability": "persistent",
               "val": {
                 "u64": "3"
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 2000000
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "SubmitterInvoices"
+                  },
+                  {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "vec": [
+                  {
+                    "u64": "1"
+                  },
+                  {
+                    "u64": "2"
+                  },
+                  {
+                    "u64": "3"
+                  }
+                ]
               }
             }
           },

@@ -40,4 +40,5 @@ pub enum ContractError {
     DueDateTooSoon = 27,
     DueDateTooFar = 28,
     SelfInvoice = 29,
+    OverpaymentRejected = 30,
 }

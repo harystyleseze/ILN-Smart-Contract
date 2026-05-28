@@ -39,6 +39,7 @@ pub struct Invoice {
     pub submitter_reputation_at_submission: u32, // snapshot of freelancer's reputation at submission time
 }
 
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct InvoiceParams {
@@ -150,16 +151,73 @@ pub enum StorageKey {
     TotalPaid,           // Total invoices paid
     TotalVolumeUsdc,     // Total volume in USDC
     TotalVolumeEurc,     // Total volume in EURC
-    TotalVolumeXlm,      // Total volume in XLM
+    TotalVolumeXlm,       // Total volume in XLM
+    // Submitter Index
+    SubmitterInvoices(Address), // Vec<u64> — Invoice IDs submitted by a specific address
+    // LP Index
+    LpInvoices(Address),        // Vec<u64> — Invoice IDs funded by a specific LP
     // Pause/unpause
     Paused,              // Boolean flag for contract pause state
-}
+    }
 
-// ----------------------------------------------------------------
-// Storage helpers — core invoice CRUD
-// ----------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Storage helpers — core invoice CRUD
+    // ----------------------------------------------------------------
 
-pub fn save_invoice(env: &Env, invoice: &Invoice) {
+    pub fn get_submitter_invoices(env: &Env, submitter: &Address) -> soroban_sdk::Vec<u64> {
+    env.storage()
+        .persistent()
+        .get(&StorageKey::SubmitterInvoices(submitter.clone()))
+        .unwrap_or(soroban_sdk::Vec::new(env))
+    }
+
+    pub fn add_invoice_to_submitter(env: &Env, submitter: &Address, invoice_id: u64) {
+    let mut invoices = get_submitter_invoices(env, submitter);
+    invoices.push_back(invoice_id);
+    let key = StorageKey::SubmitterInvoices(submitter.clone());
+    env.storage().persistent().set(&key, &invoices);
+    env.storage().persistent().extend_ttl(&key, 1_000_000, 2_000_000);
+    }
+
+    pub fn remove_invoice_from_submitter(env: &Env, submitter: &Address, invoice_id: u64) {
+    let invoices = get_submitter_invoices(env, submitter);
+    let mut new_invoices = soroban_sdk::Vec::new(env);
+    for id in invoices.iter() {
+        if id != invoice_id {
+            new_invoices.push_back(id);
+        }
+    }
+    let key = StorageKey::SubmitterInvoices(submitter.clone());
+    env.storage().persistent().set(&key, &new_invoices);
+    env.storage().persistent().extend_ttl(&key, 1_000_000, 2_000_000);
+    }
+
+    pub fn get_lp_invoices(env: &Env, lp: &Address) -> soroban_sdk::Vec<u64> {
+    env.storage()
+        .persistent()
+        .get(&StorageKey::LpInvoices(lp.clone()))
+        .unwrap_or(soroban_sdk::Vec::new(env))
+    }
+
+    pub fn add_invoice_to_lp(env: &Env, lp: &Address, invoice_id: u64) {
+    let mut invoices = get_lp_invoices(env, lp);
+    // Check if already present to avoid duplicates in case of partial funding
+    let mut exists = false;
+    for id in invoices.iter() {
+        if id == invoice_id {
+            exists = true;
+            break;
+        }
+    }
+    if !exists {
+        invoices.push_back(invoice_id);
+        let key = StorageKey::LpInvoices(lp.clone());
+        env.storage().persistent().set(&key, &invoices);
+        env.storage().persistent().extend_ttl(&key, 1_000_000, 2_000_000);
+    }
+    }
+
+    pub fn save_invoice(env: &Env, invoice: &Invoice) {
     let key = StorageKey::Invoice(invoice.id);
     env.storage().persistent().set(&key, invoice);
     env.storage()
@@ -209,7 +267,7 @@ pub fn get_payer_score(env: &Env, payer: &Address) -> u32 {
     {
         Some(mut rep) => {
             // Apply decay if enough ledgers have passed and config exists
-            if let Ok(decay_config) = crate::config::get_config(env) {
+            if let Some(decay_config) = crate::storage::get_config(env) {
                 let current_ledger = env.ledger().sequence();
                 let ledgers_since_activity = current_ledger.saturating_sub(rep.last_activity_ledger);
                 
@@ -223,8 +281,11 @@ pub fn get_payer_score(env: &Env, payer: &Address) -> u32 {
                     // Apply decay: score = score * (1 - decay_rate/10000)^periods
                     let mut decayed_score = rep.score as u64;
                     for _ in 0..periods_passed {
-                        // Decay: subtract decay_rate_bps basis points
-                        let decay_amount = (decayed_score * decay_config.decay_rate_bps as u64) / 10_000;
+                        // Decay: subtract decay_rate_bps basis points (min 1 point)
+                        let mut decay_amount = (decayed_score * decay_config.decay_rate_bps as u64) / 10_000;
+                        if decay_amount == 0 && decayed_score > 0 {
+                            decay_amount = 1;
+                        }
                         decayed_score = decayed_score.saturating_sub(decay_amount);
                     }
                     

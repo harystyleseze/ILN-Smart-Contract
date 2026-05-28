@@ -35,7 +35,7 @@ fn freelancer_can_cancel_pending() {
     let (client, token, freelancer, payer) = setup_test(&env);
 
     let amount = 1_000_000i128;
-    let due_date = env.ledger().timestamp() + 1000;
+    let due_date = env.ledger().timestamp() + 100000;
     let discount = 100;
 
     let id = client.submit_invoice(&freelancer, &payer, &amount, &due_date, &discount, &token);
@@ -55,7 +55,7 @@ fn non_freelancer_cannot_cancel() {
         &freelancer,
         &payer,
         &1_000_000,
-        &(env.ledger().timestamp() + 1000),
+        &(env.ledger().timestamp() + 100000),
         &100,
         &token,
     );
@@ -74,7 +74,7 @@ fn cannot_cancel_funded_invoice() {
         &freelancer,
         &payer,
         &1_000_000,
-        &(env.ledger().timestamp() + 1000),
+        &(env.ledger().timestamp() + 100000),
         &100,
         &token,
     );
@@ -98,7 +98,7 @@ fn cannot_cancel_cancelled_invoice() {
         &freelancer,
         &payer,
         &1_000_000,
-        &(env.ledger().timestamp() + 1000),
+        &(env.ledger().timestamp() + 100000),
         &100,
         &token,
     );

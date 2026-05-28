@@ -272,7 +272,7 @@ fn test_mark_paid_appealed_invoice_fails() {
 
     t.contract.appeal_default(&id, &evidence_hash(&t.env));
 
-    let result = t.contract.try_mark_paid(&id);
+    let result = t.contract.try_mark_paid(&id, &INVOICE_AMOUNT);
     assert_eq!(result, Err(Ok(ContractError::InvoiceAppealed)));
 }
 

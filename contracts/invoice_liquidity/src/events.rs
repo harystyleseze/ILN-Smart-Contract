@@ -97,6 +97,32 @@ pub struct InvoicePaid {
     pub status: InvoiceStatus,
 }
 
+#[contractevent(topics = ["partially_paid"])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct InvoicePartiallyPaid {
+    #[topic]
+    pub invoice_id: u64,
+
+    #[topic]
+    pub payer: Address,
+
+    pub amount_paid_now: i128,
+    pub total_amount_paid: i128,
+    pub remaining_amount: i128,
+}
+
+#[contractevent(topics = ["paused"])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContractPaused {
+    pub timestamp: u64,
+}
+
+#[contractevent(topics = ["unpaused"])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContractUnpaused {
+    pub timestamp: u64,
+}
+
 #[contractevent(topics = ["defaulted"])]
 #[derive(Clone, Debug, PartialEq)]
 pub struct InvoiceDefaulted {
@@ -144,17 +170,7 @@ pub struct AdminChanged {
     pub timestamp: u64,
 }
 
-#[contractevent(topics = ["paused"])]
-#[derive(Clone, Debug, PartialEq)]
-pub struct ContractPaused {
-    pub timestamp: u64,
-}
 
-#[contractevent(topics = ["unpaused"])]
-#[derive(Clone, Debug, PartialEq)]
-pub struct ContractUnpaused {
-    pub timestamp: u64,
-}
 
 #[contractevent(topics = ["upgraded"])]
 #[derive(Clone, Debug, PartialEq)]

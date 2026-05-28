@@ -10,7 +10,7 @@ use crate::{
 use soroban_sdk::{
     testutils::{Address as _, Ledger, Events},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, Env, xdr::ToXdr, xdr::FromXdr,
+    Address, Env, IntoVal, xdr::ToXdr, xdr::FromXdr,
 };
 
 #[test]

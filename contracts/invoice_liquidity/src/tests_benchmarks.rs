@@ -127,7 +127,7 @@ fn test_benchmark_all_functions() {
     // 3. Benchmark: mark_paid
     // ----------------------------------------------------------------
     b1.env.cost_estimate().budget().reset_unlimited();
-    b1.contract.mark_paid(&id);
+    b1.contract.mark_paid(&id, &INVOICE_AMOUNT);
     
     let cpu_mark = b1.env.cost_estimate().budget().cpu_instruction_cost();
     let mem_mark = b1.env.cost_estimate().budget().memory_bytes_cost();

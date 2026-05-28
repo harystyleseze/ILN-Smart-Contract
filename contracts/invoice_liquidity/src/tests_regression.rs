@@ -187,7 +187,6 @@ fn regression_due_date_must_be_future() {
         &t.token.address,
     );
 
-    assert!(result_too_soon.is_err());
     assert_eq!(result_too_soon, Err(Ok(ContractError::DueDateTooSoon)));
 
     // Test: valid due_date (24+ hours in future) should succeed

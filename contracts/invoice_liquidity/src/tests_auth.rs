@@ -191,7 +191,7 @@ fn invoke_mark_paid(t: &AuthTestEnv, invoice_id: u64) -> HostResult<()> {
     t.env.try_invoke_contract(
         &t.contract_id,
         &Symbol::new(&t.env, "mark_paid"),
-        vec![&t.env, invoice_id.into_val(&t.env)],
+        vec![&t.env, invoice_id.into_val(&t.env), INVOICE_AMOUNT.into_val(&t.env)],
     )
 }
 
@@ -300,7 +300,7 @@ fn set_mark_paid_auth(t: &AuthTestEnv, signer: &Address, invoice_id: u64, includ
         invoke: &MockAuthInvoke {
             contract: &t.contract_id,
             fn_name: "mark_paid",
-            args: (invoice_id,).into_val(&t.env),
+            args: (invoice_id, INVOICE_AMOUNT).into_val(&t.env),
             sub_invokes,
         },
     }]);
