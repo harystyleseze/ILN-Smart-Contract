@@ -1,0 +1,625 @@
+# ILN Smart Contract Threat Model
+
+**Document Version:** 1.0  
+**Date:** May 2024  
+**Status:** Pre-Audit  
+
+## Executive Summary
+
+The Invoice Liquidity Network (ILN) contract enables freelancers to monetize unpaid invoices through liquidity providers (LPs) who purchase discounted claims. This threat model identifies potential attack vectors, trust assumptions, and existing mitigations for the Soroban smart contract implementation.
+
+**Scope:** Core `invoice_liquidity` contract and integrated `reputation_bonus` contract  
+**Out of Scope:** Frontend, RPC endpoints, custodial systems, off-chain governance
+
+---
+
+## Trusted Parties
+
+### 1. **Admin**
+- **Role:** Central authority for contract configuration and dispute resolution
+- **Capabilities:** 
+  - Update governance parameters (decay rates, reputation thresholds, fee rates)
+  - Manage token registry (add/remove approved tokens)
+  - Pause/unpause contract
+  - Resolve appeals and disputes
+  - Set primary distribution contract
+
+**Risk:** Admin key compromise would allow:
+- Unilateral parameter manipulation (high reputation requirements, excessive decay)
+- Freezing of contract via pause
+- Adding malicious tokens
+- Forced resolution of disputes in admin's favor
+
+**Mitigation:** 
+- Multi-sig governance recommended (outside contract scope)
+- Time-locks on critical parameters (outside contract scope)
+- Public governance events logged on-chain for transparency
+
+### 2. **Soroban Runtime & Stellar Network**
+- **Assumptions:**
+  - Soroban executor is bug-free
+  - Stellar consensus is honest (Byzantine fault tolerance)
+  - Cryptographic primitives (SHA-256, Ed25519) are collision-resistant
+  - Ledger state is immutable once finalized
+
+**Risk:** Network-level attacks (51% attacks, consensus failures) are outside contract scope but catastrophic if realized.
+
+### 3. **Token Contracts (USDC, EURC, XLM)**
+- **Assumptions:**
+  - Tokens implement Stellar Asset Contract standard correctly
+  - Token transfers are atomic and final
+  - Tokens have no hidden transfer hooks that could fail unexpectedly
+
+**Risk:** Malicious or buggy token implementation could:
+- Revert transfers unexpectedly, leaving invoices in inconsistent states
+- Front-run token transfers via hooks
+- Violate token balance invariants
+
+**Mitigation:**
+- Admin controls token registry (whitelist only trusted tokens)
+- Contract validates token approval before use
+- No recursive calls to token contracts
+
+---
+
+## Attack Surfaces & Threats
+
+### A. REENTRANCY ATTACKS
+
+#### A1. Cross-Contract Reentrancy via Token Transfers
+
+**Description:**  
+When the contract transfers tokens to users (e.g., `fund_invoice()`, `claim_default()`), the destination address could be a malicious contract that calls back into ILN during the transfer.
+
+**Attack Scenario:**
+```
+1. Attacker deploys malicious contract as LP
+2. Attacker calls fund_invoice() with attacker contract as funder
+3. Token transfer to attacker contract triggers callback
+4. Callback calls mark_paid() or another state-mutating function
+5. Contract state could be manipulated (double-spending LP funds)
+```
+
+**Current Mitigation:**
+- ✅ **Checks-Effects-Interactions Pattern:** Contract updates `invoice.amount_funded` **before** calling token transfer
+- ✅ **Single Transfer Per TX:** Token transfer is the final external call
+- ✅ **No Delegate Calls:** Soroban has no delegate call primitive
+
+**Code Evidence:** [fund_invoice() in lib.rs](contracts/invoice_liquidity/src/lib.rs#L634-L730)
+```rust
+// UPDATE STATE FIRST (effects)
+invoice.amount_funded += amount;
+save_invoice(&env, &invoice);
+
+// THEN EXTERNAL CALL (interactions)
+token.transfer(...);
+```
+
+**Residual Risk:** ⚠️ **LOW-MEDIUM**
+- Token contract behavior during transfer is unpredictable
+- If token has custom hooks, callbacks could occur
+- Mitigation assumes no nested ILN calls during transfer (unproven for all token implementations)
+
+**Recommendation:**
+- Audit specific USDC/EURC implementations for callback hooks
+- Consider mutex-style guard state variable (set flag before transfer, check on re-entry)
+
+---
+
+#### A2. Reentrancy via Appeal/Dispute Resolution
+
+**Description:**  
+The `resolve_appeal()` and `resolve_dispute()` functions are called by admin and modify invoice state. If admin is a contract, callbacks could occur during execution.
+
+**Current Mitigation:**
+- ✅ **Admin-Only Access:** Only the contract admin can call these functions
+- ✅ **Admin Key is Trusted:** Assumes admin key is secure (not a DAO or contract initially)
+
+**Residual Risk:** ⚠️ **MEDIUM**
+- If governance transitions to a DAO contract, DAO could be reentered
+- The contract does not prevent admin from being a contract
+
+**Recommendation:**
+- Document that admin should be a secure EOA (multi-sig) for the beta phase
+- Future governance upgrade should include reentrancy protections (e.g., state flags)
+
+---
+
+### B. FRONT-RUNNING ATTACKS
+
+#### B1. LP Queue Position Manipulation
+
+**Description:**  
+LPs call `join_fund_queue()` to register intent before `resolve_fund_queue()` selects the winner. A front-runner could:
+
+1. Observe pending `join_fund_queue()` TX
+2. Front-run with higher reputation snapshot
+3. Win the funding right by being selected first
+
+**Attack Scenario:**
+```
+1. LP1 calls join_fund_queue(invoice_id) with reputation 45
+2. Front-runner observes TX in mempool
+3. Front-runner calls resolve_fund_queue() immediately after
+4. If mempool order favors front-runner's join TX, front-runner wins
+```
+
+**Current Mitigation:**
+- ✅ **Reputation Scoring:** Resolution selects highest reputation LP at selection time
+- ✅ **Decentralized Mempool:** Stellar/Soroban mempool is not ordered by gas (unlike Ethereum)
+- ✅ **Queue Snapshot:** Each queue entry stores reputation at join time
+
+**Code Evidence:** [resolve_fund_queue() in lib.rs](contracts/invoice_liquidity/src/lib.rs#L810-L880)
+```rust
+// Select LP with highest reputation snapshot
+let best_candidate = queue.iter()
+    .max_by_key(|entry| entry.reputation_score)
+    .cloned();
+```
+
+**Residual Risk:** ⚠️ **LOW-MEDIUM**
+- If multiple LPs have same reputation, selection is deterministic (first-in-queue)
+- Stellar's random sequence of validators makes pure front-running hard
+- However, LPs observing pending TXs could delay their own join to improve position
+
+**Recommendation:**
+- Document fair queuing assumptions (Stellar validator randomness)
+- Consider adding randomness to tie-breaking (if Soroban supports PRNG)
+- Monitor queue resolution patterns for anomalies in off-chain analytics
+
+---
+
+#### B2. Discount Rate Manipulation via Reputation Decay
+
+**Description:**  
+Freelancers could front-run `mark_paid()` or `claim_default()` with decay-triggering transactions to change effective discount rates.
+
+**Attack Scenario:**
+```
+1. Freelancer has reputation score 70 (high-rep threshold 60, discount -100 bps)
+2. Freelancer observes pending LP funding TX
+3. Freelancer calls market_paid() on unrelated invoice to trigger decay
+4. Decay drops reputation to 59
+5. Incoming LP funding now uses full discount_rate instead of reduced rate
+```
+
+**Current Mitigation:**
+- ✅ **Decay Applied on Read:** Reputation decay is calculated lazily when score is retrieved
+- ✅ **Snapshot at Submission:** Invoice stores discount_rate at submission time (not recalculated)
+
+**Code Evidence:** [submit_invoice() in lib.rs](contracts/invoice_liquidity/src/lib.rs#L250-L270)
+```rust
+let invoice = Invoice {
+    // ... other fields ...
+    discount_rate,  // Frozen at submission time
+};
+```
+
+**Residual Risk:** ⚠️ **LOW**
+- Discount rate on invoice is immutable once submitted
+- Only affects future invoices, not in-flight ones
+- Attack has no direct benefit to attacker (only affects payer, not freelancer revenue)
+
+**Recommendation:**
+- Document that discount rates are locked at submission
+- Monitor reputation scores for abnormal decay patterns
+
+---
+
+### C. TIMESTAMP MANIPULATION ATTACKS
+
+#### C1. `due_date` Bypass via Clock Manipulation
+
+**Description:**  
+The contract checks `env.ledger().timestamp()` against invoice `due_date` to determine payment status. A validator or sequencer could manipulate ledger timestamp.
+
+**Attack Scenario:**
+```
+1. Invoice is due at timestamp T
+2. Validator produces a block with timestamp T-10 (just before due date)
+3. Payer fails to mark invoice as paid
+4. Validator produces next block with timestamp T+100 (after due date)
+5. Payer marked as defaulter despite paying in time
+```
+
+**Current Mitigation:**
+- ✅ **Stellar Consensus:** Ledger timestamp is set by consensus (median of validator votes)
+- ✅ **Timestamp Monotonicity:** Soroban enforces `new_timestamp >= previous_timestamp`
+- ✅ **Validator Incentives:** 51% of validators would need to collude (Byzantine assumption)
+
+**Code Evidence:** [Validation in lib.rs](contracts/invoice_liquidity/src/lib.rs#L280-L295)
+```rust
+if env.ledger().timestamp() >= invoice.due_date {
+    // Invoice is overdue
+}
+```
+
+**Residual Risk:** ⚠️ **MEDIUM**
+- Attacks require 51% validator collusion (network-level risk, not contract-specific)
+- Small timestamp drifts (10-60 seconds) are hard to exploit deterministically
+- Validator incentives are misaligned with manipulation
+
+**Recommendation:**
+- Document timestamp assumptions (Stellar consensus, 51% honest validators)
+- Recommend generous grace periods for critical deadlines (24-hour payment windows, not seconds)
+- Monitor Stellar validator consensus for anomalies
+
+#### C2. Appeal Window Bypass
+
+**Description:**  
+The `appeal_default()` function enforces a 30-day appeal window from `due_date`. A payer could attempt to appeal after the window via timestamp manipulation.
+
+**Attack Scenario:**
+```
+1. Invoice defaults (due_date = T, 30-day window until T+30 days)
+2. Payer waits until day 29
+3. Payer calls appeal_default() before day 30
+4. Attacker validator delays block inclusion until day 35
+5. Appeal is accepted despite being outside 30-day window (if timestamps used incorrectly)
+```
+
+**Current Mitigation:**
+- ✅ **Ledger Sequence Used:** Windows are measured in ledger sequence, not timestamp
+- ✅ **Monotonic Ledger Sequence:** Impossible to go backwards in ledger height
+
+**Code Evidence:** [appeal_default() validation](contracts/invoice_liquidity/src/lib.rs#L1410)
+```rust
+let appeal_window_ledgers = 30 * 24 * 60 * 10; // 30 days in ledger units
+if env.ledger().sequence() > invoice.due_date_ledger + appeal_window_ledgers {
+    return Err(ContractError::AppealWindowClosed);
+}
+```
+
+**Residual Risk:** ✅ **LOW**
+- Ledger sequence is cryptographically protected
+- Cannot be manipulated without breaking Stellar consensus
+
+---
+
+### D. ORACLE MANIPULATION ATTACKS
+
+#### D1. Reputation Score Manipulation
+
+**Description:**  
+The reputation system relies on the contract's internal tracking of scores. If reputation calculations are wrong, LPs could game the system.
+
+**Attack Scenario:**
+```
+1. Attacker submits and immediately defaults on 100 invoices
+2. Attacker reputation drops from 50 to 0 (crude model)
+3. Attacker waits for decay to slowly increase reputation back
+4. Attacker repeats with another identity
+5. Network creates many low-reputation identities
+```
+
+**Current Mitigation:**
+- ✅ **Decay Mechanism:** Scores decay over time if inactive (removes incentive to collect accounts)
+- ✅ **Fixed Penalties:** Defaults incur `-5` score penalty (not %-based)
+- ✅ **Score Floor:** Scores are capped at 0-100 range
+- ✅ **Admin Oversight:** Admin can monitor patterns and pause if needed
+
+**Code Evidence:** [get_payer_score() in invoice.rs](contracts/invoice_liquidity/src/invoice.rs#L227-L250)
+```rust
+if u64::from(ledgers_since_activity) >= decay_config.decay_period_ledgers {
+    let periods_passed = u64::from(ledgers_since_activity) / decay_config.decay_period_ledgers;
+    for _ in 0..periods_passed {
+        let decay_amount = (decayed_score * decay_config.decay_rate_bps as u64) / 10_000;
+        decayed_score = decayed_score.saturating_sub(decay_amount);
+    }
+}
+```
+
+**Residual Risk:** ⚠️ **MEDIUM**
+- Reputation is centralized in contract; no external data feed
+- Decay mechanism is configurable by admin (potential misuse)
+- No on-chain evidence of off-chain reputation events (defaults, appeals)
+- LPs must trust admin did not artificially inflate/deflate scores
+
+**Recommendation:**
+- Publish reputation change events for off-chain verification
+- Document reputation model as **not cryptographically proven** (trust-based on contract execution)
+- Recommend frequent reputation audits by independent parties
+- Consider reputation delegation (querying other protocols like Lens, etc.)
+
+#### D2. Missing External Oracle for Payer Creditworthiness
+
+**Description:**  
+The contract has no integration with external credit oracles. Payer reputation is purely based on payment history in ILN, not broader financial trustworthiness.
+
+**Attack Scenario:**
+```
+1. Attacker is highly reputable in ILN (always pays)
+2. Attacker is insolvent off-chain (high bankruptcy risk)
+3. LPs see high reputation and fund invoices
+4. Attacker defaults on-chain (ILN sees it as unpredictable)
+5. LPs lose capital despite on-chain metrics seeming good
+```
+
+**Current Mitigation:**
+- ✅ **Governance Awareness:** Admin can manually verify payer identity (outside contract)
+- ✅ **LP Risk Assessment:** LPs can independently verify payer creditworthiness
+- ✅ **Discount Rates:** High-risk payers should offer higher discounts
+
+**Residual Risk:** ⚠️ **HIGH**
+- No cryptographic proof of payer creditworthiness
+- Purely trust-based system for initial payer reputation
+- LPs bear 100% of credit risk
+
+**Recommendation:**
+- Document ILN as a **reputation layer**, not a credit substitute
+- Recommend LP due diligence on payers (KYC checks, external credit reports)
+- Consider integration with Stellar-native identity protocols in future versions
+- Publish recommended LP risk management guidelines
+
+---
+
+### E. GOVERNANCE ATTACKS
+
+#### E1. Admin Key Compromise
+
+**Description:**  
+The admin key controls critical functions: token registry, parameter updates, dispute resolution, pause/unpause.
+
+**Attack Scenario:**
+```
+1. Admin private key is compromised
+2. Attacker calls pause() and freezes all operations
+3. Attacker calls resolve_dispute() in their favor (fraudulent)
+4. Attacker adds malicious token to registry
+5. Attacker updates parameters to favor their accounts
+```
+
+**Current Mitigation:**
+- ✅ **Require Auth:** All admin functions require `require_auth()` (signature verification)
+- ✅ **Public Events:** Critical admin actions emit events (pause, parameter changes)
+- ✅ **Community Oversight:** On-chain events can be monitored by users
+
+**Code Evidence:** [set_admin() in lib.rs](contracts/invoice_liquidity/src/lib.rs#L130)
+```rust
+pub fn set_admin(env: Env, admin: Address) -> Result<(), ContractError> {
+    let current_admin = get_admin(&env)?;
+    current_admin.require_auth();  // Must sign with current key
+    // ...
+    set_admin_in_storage(&env, &admin);
+}
+```
+
+**Residual Risk:** ⚠️ **CRITICAL**
+- Single point of failure if admin key is compromised
+- Events are emitted **after** state changes (vulnerable to race conditions)
+- No time-lock mechanism for critical upgrades
+- No multi-sig requirement
+
+**Recommendation:**
+- **Mandatory:** Transition to multi-sig admin (2-of-3 or 3-of-5 typical)
+- **Mandatory:** Implement time-locks (24-48 hours) for parameter changes
+- Consider DAO governance for decentralized admin (future upgrade)
+- Publish security policy for key management (rotate keys regularly, HSM storage)
+
+#### E2. Governance Parameter Misconfiguration
+
+**Description:**  
+Admin can update reputation thresholds, decay rates, and discount rates. Incorrect parameters could break economic incentives.
+
+**Attack Scenario:**
+```
+1. Admin sets decay_rate_bps = 10000 (100% decay per period!)
+2. All reputation scores drop to 0 instantly
+3. LPs can no longer find qualified invoices
+4. Protocol becomes non-functional
+```
+
+**Current Mitigation:**
+- ✅ **Validation Constraints:** Some parameters have bounds checks (bonus_bps <= 500)
+- ✅ **Public Events:** All config changes emit events for monitoring
+
+**Code Evidence:** [update_config() in config.rs](contracts/invoice_liquidity/src/config.rs#L28-L42)
+```rust
+if bonus_bps > MAX_BONUS_BPS {
+    return Err(ConfigError::InvalidBonusBps);
+}
+if min_discount_rate_bps == 0 {
+    return Err(ConfigError::InvalidMinDiscountRate);
+}
+```
+
+**Residual Risk:** ⚠️ **MEDIUM**
+- Not all parameters have bounds checks (e.g., `decay_rate_bps` can be any u32)
+- No validation that parameters are "economically sane"
+- Admin can set conflicting parameters (high_rep_threshold = 200, which is impossible)
+
+**Recommendation:**
+- Add comprehensive validation for all parameters:
+  - `high_rep_threshold` must be 0-100
+  - `decay_rate_bps` must be 0-500 (max 5% per period)
+  - `decay_period_ledgers` must be > 0
+- Document safe parameter ranges in governance policy
+- Require test runs on testnet before mainnet updates
+
+---
+
+### F. TOKEN TRANSFER EDGE CASES
+
+#### F1. Token Transfer Fails, But State Is Updated
+
+**Description:**  
+The contract updates state before calling `token.transfer()`. If transfer fails, state inconsistency occurs.
+
+**Attack Scenario:**
+```
+1. LP calls fund_invoice() for 1000 USDC
+2. Contract sets invoice.amount_funded = 1000
+3. Token transfer fails (token is paused, LP balance insufficient, etc.)
+4. Function reverts due to failed transfer
+5. But state rollback is incomplete (ledger reverts, but off-chain listeners might see partial state)
+```
+
+**Current Mitigation:**
+- ✅ **Atomic Transactions:** Soroban transactions are atomic (all-or-nothing)
+- ✅ **Checks-Effects-Interactions Pattern:** State updated before external calls
+- ✅ **Explicit Error Handling:** Contract doesn't silently swallow errors
+
+**Code Evidence:** [fund_invoice() in lib.rs](contracts/invoice_liquidity/src/lib.rs#L700-L730)
+```rust
+invoice.amount_funded += amount;
+save_invoice(&env, &invoice);
+token.transfer(&funder, &freelancer, &amount)?;  // If this fails, TX reverts
+```
+
+**Residual Risk:** ✅ **LOW**
+- Soroban ensures all-or-nothing execution
+- State changes are rolled back if any call fails
+- Token transfer is final external call (safe pattern)
+
+**Recommendation:**
+- Document assumption of atomic transactions (rely on Soroban)
+- Continue checks-effects-interactions pattern for all external calls
+
+#### F2. Token Allowance Not Set
+
+**Description:**  
+The contract calls `token.transfer()`, which requires the sender to have approved the amount. If approval is missing, transfer fails.
+
+**Attack Scenario:**
+```
+1. LP calls fund_invoice() without first approving ILN contract
+2. token.transfer() fails due to insufficient allowance
+3. TX reverts, but LP may not understand why
+4. User experience is poor
+```
+
+**Current Mitigation:**
+- ✅ **Documentation:** Off-chain UI should guide users to approve first
+- ✅ **Clear Error Messages:** Contract returns `Unauthorized` if transfer fails
+
+**Residual Risk:** ⚠️ **LOW**
+- Not a security issue (user error, not exploit)
+- Affects UX but not contract integrity
+
+**Recommendation:**
+- Add helper functions for checking allowance
+- Publish integration guide with approval steps
+
+#### F3. Partial Token Transfer Success
+
+**Description:**  
+Some token implementations allow partial transfers. If token transfers less than requested, contract state is inconsistent.
+
+**Attack Scenario:**
+```
+1. LP calls fund_invoice() for 1000 USDC
+2. Token contract only transfers 999 USDC (token deduction/fee logic)
+3. Contract records invoice.amount_funded = 1000 (incorrect!)
+4. Freelancer receives only 999 USDC but invoice shows 1000 funded
+```
+
+**Current Mitigation:**
+- ✅ **Token Specification:** Stellar Asset Contract standard requires full amount or revert
+- ✅ **Immutable Token Code:** Once a token is deployed, its behavior is fixed (no upgrade without governance)
+
+**Code Evidence:** All token transfers assume Stellar Asset Contract standard behavior.
+
+**Residual Risk:** ⚠️ **LOW-MEDIUM**
+- Only applies if a non-standard token is added to registry
+- Admin controls token registry (can prevent malicious tokens)
+- Recommendation: Only whitelist well-audited tokens (USDC, EURC, native XLM)
+
+**Recommendation:**
+- Admin should conduct token audit before whitelisting
+- Document token requirements (no fee-on-transfer, standard interface)
+- Consider adding token validation helper (test transfer of 1 stroop to verify behavior)
+
+---
+
+## Summary of Mitigations & Residual Risks
+
+| Threat | Severity | Mitigation | Residual Risk |
+|--------|----------|-----------|---------------|
+| **Reentrancy (Token Transfers)** | HIGH | Checks-effects-interactions pattern | LOW-MEDIUM (token hooks unpredictable) |
+| **Reentrancy (Dispute Resolution)** | HIGH | Admin-only access | MEDIUM (if admin is DAO) |
+| **LP Queue Front-Running** | MEDIUM | Reputation snapshot, Stellar mempool randomness | LOW-MEDIUM (tie-breaking predictable) |
+| **Discount Rate Manipulation** | MEDIUM | Rate frozen at submission | LOW (no benefit to attacker) |
+| **Timestamp Manipulation** | MEDIUM | Consensus-based timestamp, ledger sequences | MEDIUM (51% validator attack) |
+| **Appeal Window Bypass** | MEDIUM | Ledger sequence windows | LOW (cryptographically protected) |
+| **Reputation Sybil Attack** | MEDIUM | Decay mechanism, admin oversight | MEDIUM (no external oracle) |
+| **Missing Credit Oracle** | HIGH | None (design limitation) | HIGH (LPs assume all risk) |
+| **Admin Key Compromise** | CRITICAL | Require auth, public events | CRITICAL (single point of failure) |
+| **Parameter Misconfiguration** | MEDIUM | Bounds checks (partial) | MEDIUM (incomplete validation) |
+| **Token Transfer Failure** | MEDIUM | Atomic transactions | LOW (Soroban guarantees) |
+| **Token Allowance Missing** | LOW | Documentation, error handling | LOW (UX issue, not security) |
+| **Partial Token Transfer** | MEDIUM | Token specification, admin control | LOW-MEDIUM (requires rogue token) |
+
+---
+
+## Risk Recommendations (Priority Order)
+
+### 🔴 Critical (Pre-Audit)
+1. **Implement Multi-Sig Admin** (2-of-3 minimum)  
+   - Reduces single-point-of-failure risk from CRITICAL to MEDIUM
+   - Requires Soroban multi-sig contract integration
+
+2. **Add Time-Locks for Parameter Changes**  
+   - Prevents instant governance attacks
+   - Allows community reaction time to malicious changes
+
+3. **Validate All Configuration Parameters**  
+   - Enforce bounds: `high_rep_threshold` in 0-100, `decay_rate_bps` <= 500
+   - Catch configuration bugs before deployment
+
+### 🟡 High (Before Mainnet)
+4. **Implement Reentrancy Guard State Flag**  
+   - Add `is_locked` boolean to prevent nested external calls
+   - Apply to `fund_invoice()`, `claim_default()`, `resolve_*()` functions
+
+5. **Document Trusted Assumptions**  
+   - Publish security model: "LPs assume 100% credit risk"
+   - Clarify Stellar validator assumptions, token standards
+
+6. **Conduct Token Audit**  
+   - Verify USDC, EURC implementations for unexpected callbacks
+   - Establish token whitelist policy
+
+### 🟢 Medium (Post-Launch)
+7. **Implement Reputation Audit Trail**  
+   - Emit event for each reputation change (not just on demand)
+   - Enable off-chain verification and anomaly detection
+
+8. **Add Randomness to Queue Tie-Breaking**  
+   - Prevent predictable LP selection when reputations are equal
+   - Requires Soroban PRNG support or external randomness beacon
+
+9. **Publish LP Risk Management Guide**  
+   - Recommend KYC procedures, portfolio diversification, default rate monitoring
+   - Educate users on credit risk assumptions
+
+---
+
+## Future Upgrade Considerations
+
+- **Decentralized Governance:** DAO-based admin to remove single point of failure
+- **External Credit Oracles:** Integration with Stellar-native identity/credit protocols
+- **Automated Parameter Adjustment:** Formula-based reputation thresholds based on network statistics
+- **Rollback Mechanism:** Snapshot and recovery points for emergency scenarios
+- **Insurance Pool:** Mutual insurance fund for LP losses (requires new contract)
+
+---
+
+## Conclusion
+
+The ILN contract has **sound architectural foundations** with proper state management (checks-effects-interactions) and access control. However, **critical risks remain**:
+
+1. **Admin single point of failure** – must be mitigated before mainnet
+2. **No external credit oracle** – by design, but LPs must understand full risk
+3. **Parameter misconfiguration possible** – needs tighter validation
+4. **Reentrancy guards incomplete** – consider state flags for defense-in-depth
+
+**Recommendation:** Conduct formal security audit focusing on:
+- Admin key management and governance upgrade path
+- Reentrancy in complex scenarios (multi-token, distribution integration)
+- Parameter validation and safe configuration bounds
+- External token behavior (USDC/EURC callback hooks, if any)
+
+---
+
+**Document Prepared By:** Security Review Team  
+**Next Steps:** Address critical recommendations, then proceed to formal audit

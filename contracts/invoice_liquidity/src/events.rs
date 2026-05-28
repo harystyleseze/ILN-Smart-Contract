@@ -156,6 +156,15 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+#[contractevent(topics = ["upgraded"])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContractUpgraded {
+    #[topic]
+    pub admin: Address,
+    pub new_wasm_hash: BytesN<32>,
+    pub timestamp: u64,
+}
+
 // ── Issue #36: appeal_default events ──────────────────────────────────────────
 
 /// Emitted when a payer files an appeal against an unfair default marking.

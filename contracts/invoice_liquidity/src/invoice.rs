@@ -36,6 +36,7 @@ pub struct Invoice {
     pub funder: Option<Address>, // set when an LP funds the invoice (legacy for full funding)
     pub funded_at: Option<u64>,  // ledger timestamp when funding occurred
     pub amount_funded: i128,     // cumulative amount funded so far
+    pub submitter_reputation_at_submission: u32, // snapshot of freelancer's reputation at submission time
 }
 
 #[contracttype]

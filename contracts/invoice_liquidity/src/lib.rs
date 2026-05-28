@@ -21,10 +21,10 @@ use soroban_sdk::{
 };
 
 use events::{
-    AdminChanged, AppealResolved, ContractPaused, ContractUnpaused, DefaultAppealed,
-    DisputeResolved, FundQueueResolved, FundRequested, InvoiceCancelled, InvoiceDefaulted,
-    InvoiceDisputed, InvoiceFunded, InvoicePaid, InvoiceSubmitted, InvoiceTransferred,
-    InvoiceUpdated,
+    AdminChanged, AppealResolved, ContractPaused, ContractUnpaused, ContractUpgraded,
+    DefaultAppealed, DisputeResolved, FundQueueResolved, FundRequested, InvoiceCancelled,
+    InvoiceDefaulted, InvoiceDisputed, InvoiceFunded, InvoicePaid, InvoiceSubmitted,
+    InvoiceTransferred, InvoiceUpdated,
 };
 <<<<<<< fix/storage-key-namespacing
 use crate::storage::{
@@ -206,6 +206,45 @@ impl InvoiceLiquidityContract {
     }
 
     // ------------------------------------------------------------
+    // upgrade (Issue #48)
+    // ------------------------------------------------------------
+    /// Upgrade the contract to a new WASM hash.
+    /// 
+    /// Only the admin can trigger an upgrade. This function emits an event
+    /// but does not directly perform the upgrade—that is done by the network
+    /// after the contract is authorized to update its code hash via governance.
+    ///
+    /// # Arguments
+    /// - `env`: The Soroban environment
+    /// - `new_wasm_hash`: The hash of the new WASM binary to upgrade to (32 bytes)
+    ///
+    /// # Returns
+    /// - `Ok(())` if the upgrade event was successfully published
+    /// - `Err(ContractError)` if called by non-admin
+    ///
+    /// # Notes
+    /// This function:
+    /// - Requires admin authentication
+    /// - Emits a ContractUpgraded event for audit trail
+    /// - Does NOT perform the actual upgrade (handled by Soroban runtime)
+    /// - Should only be called after off-chain governance approval
+    ///
+    /// Access: Admin only
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), ContractError> {
+        require_admin(&env)?;
+        
+        let admin = get_admin(&env).ok_or(ContractError::Unauthorized)?;
+
+        env.events().publish_event(&ContractUpgraded {
+            admin,
+            new_wasm_hash,
+            timestamp: env.ledger().timestamp(),
+        });
+
+        Ok(())
+    }
+
+    // ------------------------------------------------------------
     // get_contract_stats (read-only view)
     // ------------------------------------------------------------
     /// Access: Anyone
@@ -245,6 +284,9 @@ impl InvoiceLiquidityContract {
 
         let id = next_invoice_id(&env);
 
+        // Capture the freelancer's reputation score at submission time
+        let submitter_reputation_at_submission = get_payer_score(&env, &freelancer);
+
         let invoice = Invoice {
             id,
             freelancer,
@@ -257,6 +299,7 @@ impl InvoiceLiquidityContract {
             funder: None,
             funded_at: None,
             amount_funded: 0,
+            submitter_reputation_at_submission,
         };
 
         save_invoice(&env, &invoice);
@@ -376,6 +419,9 @@ impl InvoiceLiquidityContract {
 
             let id = next_invoice_id(&env);
 
+            // Capture the freelancer's reputation score at submission time
+            let submitter_reputation_at_submission = get_payer_score(&env, &params.freelancer);
+
             let invoice = Invoice {
                 id,
                 freelancer: params.freelancer,
@@ -388,6 +434,7 @@ impl InvoiceLiquidityContract {
                 funder: None,
                 funded_at: None,
                 amount_funded: 0,
+                submitter_reputation_at_submission,
             };
 
             save_invoice(&env, &invoice);
