@@ -35,6 +35,10 @@ pub enum DataKey {
     TotalVolumeUsdc,
     TotalVolumeEurc,
     TotalVolumeXlm,
+    TokenVolume(Address),
+    Dispute(u64),
+    SubmitterInvoices(Address),
+    LpInvoices(Address),
 }
 
 // ----------------------------------------------------------------

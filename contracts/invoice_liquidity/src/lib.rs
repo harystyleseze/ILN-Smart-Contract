@@ -101,6 +101,7 @@ impl InvoiceLiquidityContract {
             decay_period_ledgers: 10000,
             dispute_timeout_ledgers: 10000,
             xlm_sac_address: xlm_token.clone(),
+            price_oracle: None,
         };
         crate::storage::set_config(&env, &initial_config);
 
@@ -194,6 +195,19 @@ impl InvoiceLiquidityContract {
             .instance()
             .set(&StorageKey::DistributionContract, &distribution_contract);
         Ok(())
+    }
+
+    /// Access: Admin only
+    pub fn set_price_oracle(env: Env, oracle: Address) -> Result<(), ContractError> {
+        require_admin(&env)?;
+        let admin = get_admin(&env).ok_or(ContractError::Unauthorized)?;
+        crate::config::set_price_oracle(&env, &admin, oracle)?;
+        Ok(())
+    }
+
+    /// Access: Anyone
+    pub fn get_price_oracle(env: Env) -> Option<Address> {
+        crate::storage::get_config(&env).and_then(|config| config.price_oracle)
     }
 
     /// Access: Admin only
@@ -391,7 +405,7 @@ impl InvoiceLiquidityContract {
         let id = next_invoice_id(&env);
 
         // Capture the freelancer's reputation score at submission time
-        let submitter_reputation_at_submission = get_payer_score(&env, &freelancer);
+        let submitter_reputation = get_payer_score(&env, &freelancer);
 
         let invoice = Invoice {
             id,
@@ -405,7 +419,8 @@ impl InvoiceLiquidityContract {
             funder: None,
             funded_at: None,
             amount_funded: 0,
-            submitter_reputation_at_submission,
+            amount_paid: 0,
+            submitter_reputation,
         };
 
         save_invoice(&env, &invoice);
@@ -530,7 +545,7 @@ impl InvoiceLiquidityContract {
             let id = next_invoice_id(&env);
 
             // Capture the freelancer's reputation score at submission time
-            let submitter_reputation_at_submission = get_payer_score(&env, &params.freelancer);
+            let submitter_reputation = get_payer_score(&env, &params.freelancer);
 
             let invoice = Invoice {
                 id,
@@ -538,13 +553,14 @@ impl InvoiceLiquidityContract {
                 payer: params.payer,
                 token: params.token,
                 amount: params.amount,
-due_date: params.due_date.try_into().unwrap(),
+                due_date: params.due_date.try_into().unwrap(),
                 discount_rate: params.discount_rate,
                 status: InvoiceStatus::Pending,
                 funder: None,
                 funded_at: None,
                 amount_funded: 0,
-                submitter_reputation_at_submission,
+                amount_paid: 0,
+                submitter_reputation,
             };
 
             save_invoice(&env, &invoice);
@@ -804,37 +820,7 @@ due_date: params.due_date.try_into().unwrap(),
             increment_total_funded(&env);
         }
 
-        // Add to volume counter - get token list from storage
-        let token_list: Vec<Address> = env
-            .storage()
-            .persistent()
-            .get(&crate::storage::DataKey::TokenList)
-            .unwrap_or(Vec::new(&env));
-
-        // Get token addresses from list, or use dummy addresses if not available
-        let usdc_addr = if token_list.len() > 0 {
-            token_list.get(0).unwrap()
-        } else {
-            invoice.token.clone()
-        };
-        let eurc_addr = if token_list.len() > 1 {
-            token_list.get(1).unwrap()
-        } else {
-            invoice.token.clone()
-        };
-        let xlm_addr = if token_list.len() > 2 {
-            token_list.get(2).unwrap()
-        } else {
-            invoice.token.clone()
-        };
-        add_volume(
-            &env,
-            &invoice.token,
-            fund_amount,
-            &usdc_addr,
-            &eurc_addr,
-            &xlm_addr,
-        );
+        add_volume(&env, &invoice.token, fund_amount);
 
         notify_distribution_funding(&env, &funder, fund_amount);
 
