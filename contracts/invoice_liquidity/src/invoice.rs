@@ -103,7 +103,7 @@ pub struct ContractStats {
 // ----------------------------------------------------------------
 
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AppealRecord {
     /// SHA-256 hash of off-chain evidence submitted by the payer.
     pub evidence_hash: BytesN<32>,
@@ -119,7 +119,7 @@ pub struct AppealRecord {
 // ----------------------------------------------------------------
 
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DisputeRecord {
     /// SHA-256 hash of off-chain dispute evidence.
     pub reason_hash: BytesN<32>,
@@ -228,12 +228,12 @@ pub fn try_load_invoice(env: &Env, id: u64) -> Option<Invoice> {
     env.storage().persistent().get(&StorageKey::Invoice(id))
 }
 
-pub fn next_invoice_id(env: &Env) -> u64 {
-    let current: u64 = env
-        .storage()
-        .persistent()
-        .get(&StorageKey::InvoiceCount)
-        .unwrap_or(0);
+pub fn read_next_invoice_id(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&StorageKey::NextInvoiceId)
+        .unwrap_or(1)
+}
 
 pub fn write_next_invoice_id(env: &Env, id: u64) {
     env.storage().instance().set(&StorageKey::NextInvoiceId, &id);
