@@ -612,6 +612,20 @@ pub fn add_volume(env: &Env, token: &Address, amount: i128) {
     );
 
     // Preserve legacy aggregate token counters for compatibility.
+    if let Some(config) = crate::storage::get_config(env) {
+        if token == &config.xlm_sac_address {
+            let current: i128 = env
+                .storage()
+                .persistent()
+                .get(&StorageKey::TotalVolumeXlm)
+                .unwrap_or(0);
+            env.storage()
+                .persistent()
+                .set(&StorageKey::TotalVolumeXlm, &(current + amount));
+            return;
+        }
+    }
+
     let token_list: soroban_sdk::Vec<Address> = env
         .storage()
         .persistent()

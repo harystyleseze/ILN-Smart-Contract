@@ -32,7 +32,7 @@ fn test_reputation_lifecycle_flow() {
     let inv = client.submit_invoice(&freelancer, &payer, &1000, &1800000000, &500);
     let rep_f1 = client.get_reputation(&freelancer);
     let rep_p1 = client.get_reputation(&payer);
-    
+
     assert_eq!(rep_f1.invoices_submitted, 1);
     assert_eq!(rep_p1.invoices_submitted, 1);
     assert_eq!(rep_f1.score, 0);
@@ -41,7 +41,7 @@ fn test_reputation_lifecycle_flow() {
     client.mark_paid(&inv.id);
     let rep_f2 = client.get_reputation(&freelancer);
     let rep_p2 = client.get_reputation(&payer);
-    
+
     assert_eq!(rep_f2.invoices_paid, 1);
     assert_eq!(rep_p2.invoices_paid, 1);
     assert_eq!(rep_f2.score, 100);
@@ -50,10 +50,10 @@ fn test_reputation_lifecycle_flow() {
     // 4. Submit another and Default
     let inv2 = client.submit_invoice(&freelancer, &payer, &1000, &1800000000, &500);
     client.handle_default(&inv2.id);
-    
+
     let rep_f3 = client.get_reputation(&freelancer);
     let rep_p3 = client.get_reputation(&payer);
-    
+
     assert_eq!(rep_f3.invoices_defaulted, 1);
     assert_eq!(rep_p3.invoices_defaulted, 1);
     assert_eq!(rep_f3.invoices_submitted, 2);

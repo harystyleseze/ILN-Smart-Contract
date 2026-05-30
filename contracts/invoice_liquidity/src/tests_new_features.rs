@@ -7,8 +7,7 @@
 
 use super::*;
 use soroban_sdk::{
-    contract,
-    contractimpl,
+    contract, contractimpl,
     testutils::{Address as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env,
@@ -228,7 +227,10 @@ fn test_contract_stats_tracks_token_volumes_and_oracle_normalization() {
     });
 
     let stats = t.contract.get_contract_stats();
-    assert_eq!(stats.total_volume_usd_normalized, INVOICE_AMOUNT * 20_000 / 10_000);
+    assert_eq!(
+        stats.total_volume_usd_normalized,
+        INVOICE_AMOUNT * 20_000 / 10_000
+    );
 }
 
 // ================================================================

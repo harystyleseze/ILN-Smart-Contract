@@ -191,7 +191,7 @@ fn test_submit_invoice_flow() {
 
     // Pay to get 100 rep
     client.mark_paid(&inv1.id);
-    
+
     let inv2 = client.submit_invoice(&freelancer, &payer, &10_000, &1700000000, &400);
     assert_eq!(inv2.base_discount_rate_bps, 400);
     assert_eq!(inv2.effective_discount_rate_bps, 250); // Bonus applied (400 - 150)

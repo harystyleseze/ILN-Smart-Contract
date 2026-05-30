@@ -976,7 +976,7 @@ fn test_reputation_decay_inactive_score() {
         decay_rate_bps: 100, // 1% per period
         decay_period_ledgers: 1000,
         dispute_timeout_ledgers: 100,
-        xlm_sac_address: crate::storage::get_config(&t.env).unwrap().xlm_sac_address,
+        xlm_sac_address: Address::generate(&t.env),
         price_oracle: None,
     };
     t.env.as_contract(&t.contract.address, || {
@@ -1014,7 +1014,7 @@ fn test_reputation_no_decay_when_inactive() {
         decay_rate_bps: 100,
         decay_period_ledgers: 10_000_000, // Very long period
         dispute_timeout_ledgers: 100,
-        xlm_sac_address: crate::storage::get_config(&t.env).unwrap().xlm_sac_address,
+        xlm_sac_address: Address::generate(&t.env),
         price_oracle: None,
     };
     t.env.as_contract(&t.contract.address, || {
@@ -1049,7 +1049,7 @@ fn test_reputation_decay_activity_resets() {
         decay_rate_bps: 100,
         decay_period_ledgers: 1000,
         dispute_timeout_ledgers: 100,
-        xlm_sac_address: crate::storage::get_config(&t.env).unwrap().xlm_sac_address,
+        xlm_sac_address: Address::generate(&t.env),
         price_oracle: None,
     };
 
@@ -1094,7 +1094,7 @@ fn test_reputation_score_never_goes_below_zero() {
         decay_rate_bps: 5000, // Very aggressive decay: 50% per period
         decay_period_ledgers: 100,
         dispute_timeout_ledgers: 100,
-        xlm_sac_address: crate::storage::get_config(&t.env).unwrap().xlm_sac_address,
+        xlm_sac_address: Address::generate(&t.env),
         price_oracle: None,
     };
     t.env.as_contract(&t.contract.address, || {
@@ -1139,13 +1139,23 @@ fn test_upgrade_emits_correct_event() {
     let wasm_hash = soroban_sdk::BytesN::from_array(&t.env, &[1u8; 32]);
 
     // Admin calls upgrade
-    let result = t.contract.try_upgrade(&wasm_hash);
-    assert!(result.is_ok(), "Admin should be able to call upgrade");
+    t.contract.upgrade(&wasm_hash);
 
-    // Check that ContractUpgraded event was emitted
     let events = t.env.events().all().filter_by_contract(&t.contract.address);
-    assert!(
-        events.events().len() > 0,
+
+    let admin = t.env.as_contract(&t.contract.address, || {
+        crate::storage::get_admin(&t.env).unwrap()
+    });
+
+    let expected_event = crate::events::ContractUpgraded {
+        admin,
+        new_wasm_hash: wasm_hash,
+        timestamp: t.env.ledger().timestamp(),
+    };
+
+    assert_eq!(
+        events.events().last(),
+        Some(&expected_event.to_xdr(&t.env, &t.contract.address)),
         "ContractUpgraded event should be emitted"
     );
 }

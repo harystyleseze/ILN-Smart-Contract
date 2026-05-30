@@ -12,14 +12,14 @@ pub mod rate_logic;
 pub mod storage;
 pub mod top_payers;
 use access::*;
+pub mod constants;
+#[cfg(test)]
+mod tests_discount_rate;
 mod tests_lp_pagination;
 mod tests_new_features;
 mod tests_pagination;
 mod tests_regression;
 mod tests_xlm_support;
-#[cfg(test)]
-mod tests_discount_rate;
-pub mod constants;
 
 pub use crate::invoice::{
     AppealRecord, Invoice, InvoiceParams, InvoiceStatus, LpFundRequest, ReputationProfile,
@@ -103,7 +103,9 @@ impl InvoiceLiquidityContract {
             .set(&crate::storage::DataKey::MaxDiscountRate, &5000_u32);
 
         if !env.storage().instance().has(&StorageKey::NextInvoiceId) {
-            env.storage().instance().set(&StorageKey::NextInvoiceId, &1_u64);
+            env.storage()
+                .instance()
+                .set(&StorageKey::NextInvoiceId, &1_u64);
         }
 
         // Initialize config with XLM SAC address
@@ -773,8 +775,7 @@ impl InvoiceLiquidityContract {
         // Issue #28: reject funding when the payer's reputation is below the
         // configured minimum threshold (default 0 allows everyone).
         let min_payer_reputation = get_min_payer_reputation(&env);
-        if min_payer_reputation > 0
-            && get_payer_score(&env, &invoice.payer) < min_payer_reputation
+        if min_payer_reputation > 0 && get_payer_score(&env, &invoice.payer) < min_payer_reputation
         {
             return Err(ContractError::PayerReputationTooLow);
         }
@@ -1772,7 +1773,7 @@ impl InvoiceLiquidityContract {
 
     /// Access: Anyone
     pub fn get_invoice_count(env: Env) -> u64 {
-        get_contract_stats(&env).total_invoices
+        crate::invoice::read_next_invoice_id(&env) - 1
     }
 }
 
@@ -1917,13 +1918,13 @@ fn notify_distribution_settlement(
 mod test;
 #[cfg(test)]
 mod tests_access_control;
-#[cfg(test)]
-mod tests_governance_features;
 mod tests_appeal;
 mod tests_arithmetic;
 mod tests_auth;
 mod tests_dispute;
 mod tests_distribution;
+#[cfg(test)]
+mod tests_governance_features;
 mod tests_invariants;
 #[cfg(test)]
 mod tests_invoice_paid_event;

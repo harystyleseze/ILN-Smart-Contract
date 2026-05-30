@@ -1,9 +1,9 @@
 #![cfg(test)]
 
-use crate::test::setup;
 use crate::constants::MAX_DISCOUNT_RATE;
 use crate::errors::ContractError;
-use soroban_sdk::{Env, testutils::Ledger};
+use crate::test::setup;
+use soroban_sdk::{testutils::Ledger, Env};
 
 const INVOICE_AMOUNT: i128 = 1_000_000_000;
 const DUE_DATE_OFFSET: u64 = 60 * 60 * 24 * 30;
@@ -118,5 +118,8 @@ fn test_discount_validation_happens_before_storage_write() {
     assert_eq!(result, Err(Ok(ContractError::InvalidDiscountRate)));
 
     let final_invoice_count = t.contract.get_invoice_count();
-    assert_eq!(initial_invoice_count, final_invoice_count, "No storage mutation should occur");
+    assert_eq!(
+        initial_invoice_count, final_invoice_count,
+        "No storage mutation should occur"
+    );
 }

@@ -250,7 +250,11 @@ impl GovContract {
     ) -> Result<u64, GovernanceError> {
         proposer.require_auth();
 
-        let count: u64 = env.storage().instance().get(&StorageKey::ProposalCount).unwrap_or(0);
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&StorageKey::ProposalCount)
+            .unwrap_or(0);
         let id = count + 1;
 
         let now = env.ledger().timestamp();
@@ -277,8 +281,12 @@ impl GovContract {
             &proposer_weight,
         );
 
-        env.storage().persistent().set(&StorageKey::Proposal(id), &proposal);
-        env.storage().instance().set(&StorageKey::ProposalCount, &id);
+        env.storage()
+            .persistent()
+            .set(&StorageKey::Proposal(id), &proposal);
+        env.storage()
+            .instance()
+            .set(&StorageKey::ProposalCount, &id);
 
         Ok(id)
     }
@@ -339,7 +347,10 @@ impl GovContract {
         let delegator_balance = Self::get_own_balance_for_delegation(&env, &delegator);
         Self::adjust_delegated_to_me(&env, &terminal, delegator_balance as i128);
 
-        env.events().publish_event(&VotesDelegated { delegator, delegate });
+        env.events().publish_event(&VotesDelegated {
+            delegator,
+            delegate,
+        });
 
         Ok(())
     }
@@ -449,7 +460,12 @@ impl GovContract {
             .persistent()
             .set(&StorageKey::Proposal(proposal_id), &proposal);
 
-        env.events().publish_event(&VoteCast { proposal_id, voter, support, weight });
+        env.events().publish_event(&VoteCast {
+            proposal_id,
+            voter,
+            support,
+            weight,
+        });
 
         Ok(())
     }
@@ -491,24 +507,36 @@ impl GovContract {
 
         if total_votes < quorum {
             proposal.status = ProposalStatus::Rejected;
-            env.storage().persistent().set(&StorageKey::Proposal(proposal_id), &proposal);
+            env.storage()
+                .persistent()
+                .set(&StorageKey::Proposal(proposal_id), &proposal);
             return Err(GovernanceError::QuorumNotReached);
         }
 
         if proposal.votes_for <= proposal.votes_against {
             proposal.status = ProposalStatus::Rejected;
-            env.storage().persistent().set(&StorageKey::Proposal(proposal_id), &proposal);
+            env.storage()
+                .persistent()
+                .set(&StorageKey::Proposal(proposal_id), &proposal);
             return Err(GovernanceError::ProposalRejected);
         }
 
         proposal.status = ProposalStatus::Passed;
 
-        let iln_contract: Address = env.storage().instance().get(&StorageKey::IlnContract).unwrap();
+        let iln_contract: Address = env
+            .storage()
+            .instance()
+            .get(&StorageKey::IlnContract)
+            .unwrap();
 
         match proposal.action_type.clone() {
             ProposalAction::UpdateFeeRate(rate) => {
                 let args: Vec<soroban_sdk::Val> = vec![&env, rate.into_val(&env)];
-                env.invoke_contract::<()>(&iln_contract, &Symbol::new(&env, "update_fee_rate"), args);
+                env.invoke_contract::<()>(
+                    &iln_contract,
+                    &Symbol::new(&env, "update_fee_rate"),
+                    args,
+                );
             }
             ProposalAction::AddToken(token) => {
                 let args: Vec<soroban_sdk::Val> = vec![&env, token.into_val(&env)];
@@ -520,12 +548,18 @@ impl GovContract {
             }
             ProposalAction::UpdateMaxDiscountRate(rate) => {
                 let args: Vec<soroban_sdk::Val> = vec![&env, rate.into_val(&env)];
-                env.invoke_contract::<()>(&iln_contract, &Symbol::new(&env, "update_max_discount"), args);
+                env.invoke_contract::<()>(
+                    &iln_contract,
+                    &Symbol::new(&env, "update_max_discount"),
+                    args,
+                );
             }
         }
 
         proposal.status = ProposalStatus::Executed;
-        env.storage().persistent().set(&StorageKey::Proposal(proposal_id), &proposal);
+        env.storage()
+            .persistent()
+            .set(&StorageKey::Proposal(proposal_id), &proposal);
 
         Ok(())
     }
@@ -642,7 +676,9 @@ impl GovContract {
     // ── Private helpers ──────────────────────────────────────────
 
     fn get_delegate_raw(env: &Env, addr: &Address) -> Option<Address> {
-        env.storage().persistent().get(&StorageKey::Delegation(addr.clone()))
+        env.storage()
+            .persistent()
+            .get(&StorageKey::Delegation(addr.clone()))
     }
 
     /// Walk forward pointers to find the terminal node (one with no further delegate).

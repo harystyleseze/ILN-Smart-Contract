@@ -1,7 +1,7 @@
 use crate::config::get_config;
+use crate::errors::ContractError;
 use crate::rate_logic::calculate_effective_rate;
 use crate::reputation::{read_reputation, write_reputation};
-use crate::errors::ContractError;
 use soroban_sdk::{contracttype, Address, Env};
 
 #[contracttype]
@@ -60,7 +60,9 @@ pub fn submit_invoice(
         .get(&InvoiceKey::InvoiceCount)
         .unwrap_or(0);
     let next_id = count.checked_add(1).ok_or(ContractError::ArithmeticError)?;
-    env.storage().instance().set(&InvoiceKey::InvoiceCount, &next_id);
+    env.storage()
+        .instance()
+        .set(&InvoiceKey::InvoiceCount, &next_id);
 
     let invoice = Invoice {
         id: next_id,
@@ -90,7 +92,8 @@ pub fn submit_invoice(
 }
 
 pub fn mark_paid(env: &Env, invoice_id: u64) -> Result<(), ContractError> {
-    let mut invoice: Invoice = env.storage()
+    let mut invoice: Invoice = env
+        .storage()
         .persistent()
         .get(&InvoiceKey::Invoice(invoice_id))
         .ok_or(ContractError::InvoiceNotFound)?;
@@ -102,7 +105,9 @@ pub fn mark_paid(env: &Env, invoice_id: u64) -> Result<(), ContractError> {
     invoice.payer.require_auth();
     invoice.status = InvoiceStatus::Paid;
 
-    env.storage().persistent().set(&InvoiceKey::Invoice(invoice_id), &invoice);
+    env.storage()
+        .persistent()
+        .set(&InvoiceKey::Invoice(invoice_id), &invoice);
 
     // Update reputation: increment paid for both parties
     let mut payer_rep = read_reputation(env, &invoice.payer);
@@ -117,7 +122,8 @@ pub fn mark_paid(env: &Env, invoice_id: u64) -> Result<(), ContractError> {
 }
 
 pub fn handle_default(env: &Env, invoice_id: u64) -> Result<(), ContractError> {
-    let mut invoice: Invoice = env.storage()
+    let mut invoice: Invoice = env
+        .storage()
         .persistent()
         .get(&InvoiceKey::Invoice(invoice_id))
         .ok_or(ContractError::InvoiceNotFound)?;
@@ -127,7 +133,9 @@ pub fn handle_default(env: &Env, invoice_id: u64) -> Result<(), ContractError> {
     }
 
     invoice.status = InvoiceStatus::Defaulted;
-    env.storage().persistent().set(&InvoiceKey::Invoice(invoice_id), &invoice);
+    env.storage()
+        .persistent()
+        .set(&InvoiceKey::Invoice(invoice_id), &invoice);
 
     // Update reputation: increment defaulted for both parties
     let mut payer_rep = read_reputation(env, &invoice.payer);

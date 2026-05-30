@@ -75,7 +75,6 @@ fn test_submit_invoice_sets_ttl() {
 
     // Check that TTL is set
     assert!(ttl > 0);
-
     // Verify aggregate counter TTL as well
     let count_key = crate::storage::DataKey::TotalInvoices;
     let count_ttl = t.env.as_contract(&t.contract.address, || {
