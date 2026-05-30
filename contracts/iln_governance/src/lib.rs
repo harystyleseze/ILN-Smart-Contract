@@ -4,6 +4,8 @@
 //! Issue #61 — cast_vote() with anti-double-vote protection and VoteCast event.
 //! Issue #64 — delegate_votes() / undelegate_votes() with transitive delegation
 //!             and cycle detection.
+//! Issue #68 — veto_proposal() admin emergency block with governance-controlled
+//!             disable mechanism.
 
 #![no_std]
 use soroban_sdk::{
@@ -43,6 +45,12 @@ pub enum GovernanceError {
     DelegationCyclePrevented = 12,
     /// Invalid quorum basis points (must be 1..=10_000).
     InvalidQuorumBps = 13,
+    /// Issue #68: caller is not the admin.
+    NotAdmin = 14,
+    /// Issue #68: proposal cannot be vetoed in its current status.
+    NotVetoable = 15,
+    /// Issue #68: admin veto power has been disabled by governance.
+    VetoPowerDisabled = 16,
 }
 
 // ================================================================
@@ -69,6 +77,8 @@ pub enum ProposalStatus {
     Passed,
     Rejected,
     Executed,
+    /// Issue #68: proposal was blocked by the admin via veto_proposal().
+    Vetoed,
 }
 
 // ================================================================
@@ -123,6 +133,17 @@ pub struct VotesUndelegated {
     pub delegator: Address,
 }
 
+/// Issue #68: emitted when the admin vetoes a proposal.
+#[contractevent(topics = ["proposal_vetoed"])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProposalVetoed {
+    #[topic]
+    pub proposal_id: u64,
+    #[topic]
+    pub admin: Address,
+    pub reason_hash: BytesN<32>,
+}
+
 // ================================================================
 // Storage keys
 // ================================================================
@@ -142,6 +163,10 @@ pub enum StorageKey {
     Delegation(Address),
     /// Issue #64: running tally of total delegated weight pointing (transitively) at Address.
     DelegatedToMe(Address),
+    /// Issue #68: the admin address (set at initialise time).
+    Admin,
+    /// Issue #68: when `true`, admin veto power is active; when `false`, it has been disabled.
+    VetoPowerEnabled,
 }
 
 // ================================================================
@@ -159,6 +184,7 @@ impl GovContract {
         env: Env,
         iln_contract: Address,
         gov_token: Address,
+        admin: Address,
     ) -> Result<(), GovernanceError> {
         if env.storage().instance().has(&StorageKey::IlnContract) {
             return Err(GovernanceError::AlreadyInitialized);
@@ -169,6 +195,12 @@ impl GovContract {
         env.storage()
             .instance()
             .set(&StorageKey::GovToken, &gov_token);
+        env.storage()
+            .instance()
+            .set(&StorageKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&StorageKey::VetoPowerEnabled, &true);
         env.storage()
             .instance()
             .set(&StorageKey::MinQuorumBps, &DEFAULT_MIN_QUORUM_BPS);
@@ -496,6 +528,100 @@ impl GovContract {
         env.storage().persistent().set(&StorageKey::Proposal(proposal_id), &proposal);
 
         Ok(())
+    }
+
+    // ── Issue #68: veto_proposal ──────────────────────────────────
+
+    /// Veto an active (or passed) proposal, transitioning it to `Vetoed` status.
+    ///
+    /// * Only the stored admin may call this function.
+    /// * The admin veto power must still be enabled; it cannot be used after
+    ///   governance has called `disable_veto_power()`.
+    /// * Only proposals in `Active` or `Passed` status can be vetoed — an
+    ///   already-executed or already-vetoed proposal is not vetoable.
+    ///
+    /// Emits `ProposalVetoed { proposal_id, admin, reason_hash }`.
+    pub fn veto_proposal(
+        env: Env,
+        proposal_id: u64,
+        reason_hash: BytesN<32>,
+    ) -> Result<(), GovernanceError> {
+        // ── Auth: only admin ──────────────────────────────────────
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&StorageKey::Admin)
+            .unwrap();
+        admin.require_auth();
+
+        // ── Guard: veto power must still be enabled ───────────────
+        let enabled: bool = env
+            .storage()
+            .instance()
+            .get(&StorageKey::VetoPowerEnabled)
+            .unwrap_or(false);
+        if !enabled {
+            return Err(GovernanceError::VetoPowerDisabled);
+        }
+
+        // ── Load proposal ─────────────────────────────────────────
+        let mut proposal: GovernanceProposal = env
+            .storage()
+            .persistent()
+            .get(&StorageKey::Proposal(proposal_id))
+            .ok_or(GovernanceError::ProposalNotFound)?;
+
+        // ── Guard: only Active or Passed proposals are vetoable ───
+        match proposal.status {
+            ProposalStatus::Active | ProposalStatus::Passed => {}
+            _ => return Err(GovernanceError::NotVetoable),
+        }
+
+        proposal.status = ProposalStatus::Vetoed;
+        env.storage()
+            .persistent()
+            .set(&StorageKey::Proposal(proposal_id), &proposal);
+
+        env.events().publish_event(&ProposalVetoed {
+            proposal_id,
+            admin,
+            reason_hash,
+        });
+
+        Ok(())
+    }
+
+    // ── Issue #68: disable_veto_power ─────────────────────────────
+
+    /// Permanently disable the admin veto power.
+    ///
+    /// Authorization: the configured ILN contract address must authorize
+    /// (same pattern used by `set_min_quorum_bps` — governance votes trigger
+    /// this via a cross-contract call from the ILN contract).
+    ///
+    /// Once disabled this cannot be re-enabled; it is a one-way switch
+    /// intended to be called before mainnet launch.
+    pub fn disable_veto_power(env: Env) -> Result<(), GovernanceError> {
+        let iln_contract: Address = env
+            .storage()
+            .instance()
+            .get(&StorageKey::IlnContract)
+            .unwrap();
+        iln_contract.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&StorageKey::VetoPowerEnabled, &false);
+
+        Ok(())
+    }
+
+    /// Returns `true` when admin veto power is still active.
+    pub fn is_veto_power_enabled(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&StorageKey::VetoPowerEnabled)
+            .unwrap_or(false)
     }
 
     // ── Getters ──────────────────────────────────────────────────

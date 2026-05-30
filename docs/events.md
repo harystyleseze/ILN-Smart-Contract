@@ -20,6 +20,7 @@ This document outlines the event schema for the ILN Smart Contract ecosystem. Th
 | [FundQueueResolved](#fundqueueresolved) | Emitted when priority funding queue is resolved |
 | [AdminChanged](#adminchanged) | Emitted when the contract admin is updated |
 | [VoteCast](#votecast) | Emitted when a governance vote is cast |
+| [ProposalVetoed](#proposalvetoed) | Emitted when the admin vetoes a governance proposal |
 | [ContractPaused](#contractpaused) | Partially implemented |
 | [ContractUnpaused](#contractunpaused) | Partially implemented |
 | [InvoiceExpired](#invoiceexpired) | Referenced in requirements but missing |
@@ -507,6 +508,37 @@ Topics:
   "voter": "GCGOV...",
   "support": true,
   "weight": "10000000000"
+}
+```
+
+---
+
+## ProposalVetoed
+
+### Description
+Emitted when the admin exercises their emergency veto power to block a governance proposal.
+
+### Trigger Condition
+Triggered when the admin calls `veto_proposal(proposal_id, reason_hash)` on the governance contract while veto power is still enabled. The proposal must be in `Active` or `Passed` status.
+
+### Event Topics
+Topics:
+`["proposal_vetoed", proposal_id, admin]`
+
+### Field Schema Table
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `proposal_id` | `u64` | The ID of the vetoed proposal (Topic) |
+| `admin` | `Address` | The admin address that issued the veto (Topic) |
+| `reason_hash` | `BytesN<32>` | SHA-256 hash of an off-chain document explaining the veto reason |
+
+### Example Payload
+```json
+{
+  "proposal_id": 7,
+  "admin": "GBADMIN...",
+  "reason_hash": "dedededededededededededededededededededededededededededededededed"
 }
 ```
 
