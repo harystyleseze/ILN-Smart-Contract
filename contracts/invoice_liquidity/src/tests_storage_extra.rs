@@ -21,6 +21,7 @@ fn test_invoice_storage_roundtrip_u32_timestamps() {
         funder: Some(t.funder.clone()),
         funded_at: Some(1_700_000_100u64.try_into().unwrap()),
         amount_funded: 500_000_000,
+        amount_paid: 0,
         submitter_reputation: 55,
     };
 

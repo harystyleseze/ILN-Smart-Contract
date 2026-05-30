@@ -484,7 +484,7 @@ fn test_pending_to_funded_full_funding() {
     assert_eq!(invoice_after.amount_funded, INVOICE_AMOUNT);
     assert_eq!(invoice_after.funder, Some(t.funder.clone()));
     assert!(invoice_after.funded_at.is_some());
-    assert_eq!(invoice_after.funded_at.unwrap(), t.env.ledger().timestamp());
+    assert_eq!(invoice_after.funded_at.unwrap(), t.env.ledger().timestamp() as u32);
 }
 
 // ----------------------------------------------------------------

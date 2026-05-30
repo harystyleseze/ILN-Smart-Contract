@@ -16,3 +16,7 @@ rand = "0.10.1"
 serde_json = "1.0.149"
 soroban-sdk = { version = "25.3.1", features = ["testutils"] }
 
+[[test]]
+name = "multi_token_test"
+path = "../tests/multi_token_test.rs"
+

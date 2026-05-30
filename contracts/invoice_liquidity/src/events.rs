@@ -290,3 +290,12 @@ pub struct FundQueueResolved {
     /// Winning score that secured priority.
     pub score: u32,
 }
+
+#[contractevent(topics = ["expired"])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct InvoiceExpired {
+    #[topic]
+    pub invoice_id: u64,
+    pub freelancer: Address,
+    pub status: InvoiceStatus,
+}
